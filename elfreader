@@ -1,0 +1,1324 @@
+#!/usr/bin/perl -w
+#
+# $Id: se_elfreader,v 1.10 2006/08/25 23:20:05 saurabhk Exp $
+#
+#se_elfloader --endian=big --fmt=hex filename
+#se_elfloader --endian=big --fmt=bin filename
+
+use strict;
+use Getopt::Long;
+
+my $debug        = 0;
+my $usage        = 0;
+my $cpu          = "arm";
+my $endian       = "little";
+my $fmt          = "";
+my $objName      = "";
+my $objName2      = "";
+my $startAddress = "00000000";
+my $objdump      = "";
+my $objcopy      = "";
+my $forceStartAddr = undef;   #In case we want to override the start address that is pointed by the ELF.
+
+&GetOptions("usage"           => \$usage,
+	    "cpu=s"           => \$cpu,
+	    "endian=s"        => \$endian,
+	    "fmt=s"           => \$fmt,
+	    "objname=s"       => \$objName,
+	    "objname2=s"       => \$objName2,
+	    "start-address=s" => \$startAddress,
+	    "force-start-address=s", \$forceStartAddr,
+
+	   );
+
+# If we are loading into a RAM, we may need to ignore the address
+# that the ELF file provides. In that case, an option is provided
+# to specify the start address
+if (defined ($forceStartAddr)) {
+  $forceStartAddr = oct($forceStartAddr);
+}
+else {
+  $forceStartAddr = -1;
+}
+
+if ($usage) { 
+  printf "se_elfloader\n";
+  printf "\t--cpu=[arm|xt]\n";
+  printf "\t--endian=[little|big]\n";
+  printf "\t--fmt=[hex64|hex32xt|bin8|vlog32|skbin|asc8]\n";
+  printf "\t--objname=<name> if --fmt=skbin\n";
+  exit;
+}
+
+
+#my $objname = "regtest.o";
+
+if ($cpu eq "arm") {
+  $objdump = "arm-none-eabi-objdump";
+  $objcopy = "arm-none-eabi-objcopy";
+} elsif ($cpu eq "xt") {
+  $objdump = "xt-objdump";
+  $objcopy = "xt-objcopy";
+} elsif ($cpu eq "orp") {
+  $objdump = "or32-uclinux-objdump";
+  $objcopy = "or32-uclinux-objcopy";
+}
+else {
+  printf "--cpu=arm or --cpu=xt required\n";
+  exit;
+}
+
+if    ($fmt eq "hex64" ) { write_hex64  ($objName, $forceStartAddr); }
+elsif ($fmt eq "hex32xt" ) { write_hex32xt  ($objName); }
+elsif ($fmt eq "hex32" ) { write_hex32  ($objName, $forceStartAddr); }
+elsif ($fmt eq "hex16" ) { write_hex16  ($objName); }
+elsif ($fmt eq "hex8" ) { write_hex8  ($objName); }
+elsif ($fmt eq "msgvh" ) { write_msgvh  ($objName); }
+elsif ($fmt eq "flash32" ) { write_flash32  ($objName); }
+elsif ($fmt eq "flash32_split" ) { write_flash32_split ($objName); }
+elsif ($fmt eq "ork1" ) { write_ork1  ($objName); }
+elsif ($fmt eq "bin8"  ) { write_bin8   ($objName); }
+elsif ($fmt eq "vlog32") { write_vlog32 ($objName); }
+elsif ($fmt eq "skbin" ) { write_skbin  ($objName, oct($startAddress)); }
+elsif ($fmt eq "skbinorp" ) { write_skbin_orp  ($objName2, $objName, oct($startAddress)); }
+elsif ($fmt eq "skbin_lmem" ) { write_skbin_lmem  ($objName, oct($startAddress)); }
+elsif ($fmt eq "skbinsize" ) { write_size  ($objName);}
+elsif ($fmt eq "asc8"  ) { write_asc8   ($objName); }
+elsif ($fmt eq "asc64" ) { write_asc64  ($objName); }
+elsif ($fmt eq "skbinxt" ) { write_skbinxt   ($objName, oct($startAddress)); }
+elsif ($fmt eq "skbinxtnp1" ) { write_skbinxtnp1   ($objName, oct($startAddress)); }
+elsif ($fmt eq "orphex32" ) { write_orphex32   ($objName, oct($startAddress)); }
+elsif ($fmt eq "orpbehex32" ) { write_orpbehex32   ($objName, oct($startAddress)); }
+elsif ($fmt eq "ssphex32" ) { write_ssphex32   ($objName, oct($startAddress)); }
+elsif ($fmt eq "sspbehex32" ) { write_sspbehex32   ($objName, oct($startAddress)); }
+elsif ($fmt eq "orphex64" ) { write_orphex64   ($objName, oct($startAddress)); }
+elsif ($fmt eq "8051msgvh" ) { write_8051msgvh   ($objName); }
+elsif ($fmt eq "bootspi" ) { write_bootspi   ($objName); }
+else  { die ("Invalid argument: --fmt=$fmt"); }
+
+
+#This routine adds a header to a binary file. The format of the header is 
+#address (4bytes)
+#size (4bytes)
+#
+#For simplification
+#
+my @crc_table = ();
+sub write_skbin {
+  my ($objname, $addr) = @_;
+
+  gen_crc_table ();
+
+  open (P, "<$objname") or die ("Could not open $objname for reading");
+  binmode (P);
+  binmode (STDOUT);
+  my @file = ();
+  my $cnt=0;
+  my $byte;
+  my $crc32 = 0;
+  while (read (P, $byte, 1) == 1) {
+    $cnt++;
+    push @file, $byte;
+    $crc32 = update_crc ($crc32, ord($byte));
+  }
+  $cnt += 4; # crc32 adds 4 bytes
+
+  if (($addr & 0x3) != 0) {
+    warn ("WARNING: Address $addr is not word(32-bit) aligned\n");
+  }
+
+  if (($cnt & 0x3) != 0) {
+    warn ("WARNING: Image size $cnt is not word aligned\n");
+  }
+
+
+  wr_bin($addr);
+  wr_bin($cnt);        #CRC is included in the count, addr/length are not
+  print @file;
+  wr_bin ($crc32);
+
+  my $str = sprintf ("Addr = 0x%x, Count = 0x%x, CRC32 = 0x%x", $addr, $cnt, $crc32) if $debug;
+  warn $str if $debug;
+}
+
+
+
+
+
+
+
+
+###not fully done plan is to separte ro data and not swap them as we do in sims
+sub write_skbin_orp{
+  my ($objname2, $objname, $addr) = @_;
+
+
+  my $cnt=0;
+  my $ro_start_cnt=0;
+  my $ro_end_cnt=0;
+
+
+
+  my $cmd  = "$objdump -d -D -z --disassemble --prefix-addresses --disassemble-zeroes --show-raw-insn --disassembler-options=reg-names-std $objName" ;
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+  
+while (<P>)  {
+  last if  (/Disassembly/);
+}
+  my $opcode = 0;
+  my $lptr = 0x0;
+  my $flag = 0x0;
+  while (<P>) {
+    
+    (warn ("skipping line $_"), next) if (/Disassembly/);
+    
+    if(/is out of bounds/)
+      {
+	$flag=1;
+      }
+    my ($ad, $label, $opcode4, $opcode3, $opcode2, $opcode1, $rest) = split (' ');
+    
+  #Do not need to flip for RO DATA
+   if($flag==0)
+     {
+
+       if(/rodata.str/)
+	 {
+	   if(($ro_start_cnt!=0)&&($ro_end_cnt==0))
+	     {
+	       $ro_end_cnt=$cnt;
+	     }
+	   $cnt=$cnt+4;
+	 }
+    elsif(/rodata/)
+      {
+	if(($ro_start_cnt==0)&&($ro_end_cnt==0))
+	  {
+	    $ro_start_cnt=$cnt;
+	  }
+	$cnt=$cnt+4;
+      }
+       else{
+      if(($ro_start_cnt!=0)&&($ro_end_cnt==0))
+	{
+	  $ro_end_cnt=$cnt;
+	}
+      $cnt=$cnt+4;
+    }
+  }
+    
+
+  }
+  my $str = sprintf ("start= 0x%x, End = 0x%x", $ro_start_cnt, $ro_end_cnt) if $debug;
+  warn $str if $debug;
+
+
+
+ gen_crc_table ();
+
+  open (P, "<$objname2") or die ("Could not open $objname for reading");
+  binmode (P);
+  binmode (STDOUT);
+  my @file = ();
+  $cnt=0;
+  my $byte;
+  my $crc32 = 0;
+  my $count = 0;
+  my @b = (0, 0, 0, 0);
+  while (read (P, $byte, 1) == 1) {
+    $cnt++;
+    if(($cnt <= $ro_start_cnt)||($cnt>$ro_end_cnt))
+      {
+	$b[0] = $byte;
+	push @file, $b[0];
+	$crc32 = update_crc ($crc32, ord( $b[0]));
+
+      }
+    else{
+
+	$b[$count] = $byte;
+	$count = $count + 1;
+	if ($count == 4) 
+	  {
+	    push @file, $b[3];
+	    push @file, $b[2];
+	    push @file, $b[1];
+	    push @file, $b[0];
+	
+	    $crc32 = update_crc ($crc32, ord( $b[3]));
+	    $crc32 = update_crc ($crc32, ord($b[2]));
+	    $crc32 = update_crc ($crc32, ord($b[1]));
+	    $crc32 = update_crc ($crc32, ord($b[0]));
+	    @b = (0, 0, 0, 0);
+	    $count = 0;
+	  }
+
+      }
+    
+  }
+  $cnt += 4; # crc32 adds 4 bytes
+
+  if (($addr & 0x3) != 0) {
+    warn ("WARNING: Address $addr is not word(32-bit) aligned\n");
+  }
+
+  if (($cnt & 0x3) != 0) {
+    warn ("WARNING: Image size $cnt is not word aligned\n");
+  }
+
+
+  wr_bin($addr);
+  wr_bin($cnt);        #CRC is included in the count, addr/length are not
+  print @file;
+  wr_bin ($crc32);
+
+  $str = sprintf ("Addr = 0x%x, Count = 0x%x, CRC32 = 0x%x", $addr, $cnt, $crc32) if $debug;
+  warn $str if $debug;
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+sub write_skbin_lmem {
+  my ($objname, $addr) = @_;
+
+  gen_crc_table ();
+
+  open (P, "<$objname") or die ("Could not open $objname for reading");
+  binmode (P);
+  binmode (STDOUT);
+  my @file = ();
+  my $cnt=0;
+  my $byte;
+  my $crc32 = 0;
+  while (($cnt < 0x0FF0) && (read (P, $byte, 1))) {
+    $cnt++;
+    push @file, $byte;
+    $crc32 = update_crc ($crc32, ord($byte));
+  }
+  $cnt += 4; # crc32 adds 4 bytes
+  if (($addr & 0x3) != 0) {
+    warn ("WARNING: Address $addr is not word(32-bit) aligned\n");
+  }
+
+  if (($cnt & 0x3) != 0) {
+    warn ("WARNING: Image size $cnt is not word aligned\n");
+  }
+
+
+  wr_bin($addr);
+  wr_bin($cnt);        #CRC is included in the count, addr/length are not
+  print @file;
+  wr_bin ($crc32);
+
+  my $str = sprintf ("Addr = 0x%x, Count = 0x%x, CRC32 = 0x%x", $addr, $cnt, $crc32) if $debug;
+  warn $str if $debug;
+}
+
+sub write_size {
+  my ($objname, $addr) = @_;
+
+  gen_crc_table ();
+
+  open (P, "<$objname") or die ("Could not open $objname for reading");
+  binmode (P);
+  binmode (STDOUT);
+  my @file = ();
+  my $cnt=0;
+  my $byte;
+  my $crc32 = 0;
+  while (read (P, $byte, 1) == 1) {
+    $cnt++;
+    push @file, $byte;
+
+  }
+
+  wr_bin($cnt); 
+  print @file;
+
+
+  my $str = sprintf ("Addr = 0x%x, Count = 0x%x, CRC32 = 0x%x", $addr, $cnt, $crc32) if $debug;
+  warn $str if $debug;
+}
+
+
+
+sub write_skbinxt {
+  my ($objname, $addr) = @_;
+
+  gen_crc_table ();
+
+  open (P, "<$objname") or die ("Could not open $objname for reading");
+  binmode (P);
+  binmode (STDOUT);
+  my @file = ();
+
+  my $cnt=0;
+  my $byte;
+  my $crc32 = 0;
+  my $count = 0;
+  my @b = (0, 0, 0, 0);
+  while (read (P, $byte, 1) == 1) {
+    $cnt++;
+
+    if($cnt < 0x3000){
+    $b[$count] = $byte;
+    $count = $count + 1;
+    if ($count == 4) {
+      push @file, $b[3];
+      push @file, $b[2];
+      push @file, $b[1];
+      push @file, $b[0];
+
+      $crc32 = update_crc ($crc32, ord( $b[3]));
+      $crc32 = update_crc ($crc32, ord($b[2]));
+      $crc32 = update_crc ($crc32, ord($b[1]));
+      $crc32 = update_crc ($crc32, ord($b[0]));
+      @b = (0, 0, 0, 0);
+      $count = 0;
+    }
+
+  }
+  }
+
+  if($cnt < 0x3000){
+  if ($count == 3) {
+    push @file, $b[2];
+    push @file, $b[1];
+    push @file, $b[0];
+    $crc32 = update_crc ($crc32, ord($b[2]));
+    $crc32 = update_crc ($crc32, ord($b[1]));
+    $crc32 = update_crc ($crc32, ord($b[0]));
+    @b = (0, 0, 0, 0);
+    $count = 0;
+  }
+}
+
+
+  if($cnt < 0x3000){
+  if ($count == 2) {
+    push @file, $b[1];
+    push @file, $b[0];
+    $crc32 = update_crc ($crc32, ord($b[1]));
+    $crc32 = update_crc ($crc32, ord($b[0]));
+    @b = (0, 0, 0, 0);
+    $count = 0;
+  }
+}
+
+  if($cnt < 0x3000){
+  if ($count == 1) {
+    push @file, $b[0];
+    $crc32 = update_crc ($crc32, ord($b[0]));
+    @b = (0, 0, 0, 0);
+    $count = 0;
+  }
+
+}
+  $cnt += 4; # crc32 adds 4 bytes
+
+  if (($addr & 0x3) != 0) {
+    warn ("WARNING: Address $addr is not word(32-bit) aligned\n");
+  }
+
+  if (($cnt & 0x3) != 0) {
+    warn ("WARNING: Image size $cnt is not word aligned\n");
+  }
+
+    if($cnt > 0x3000){
+      $cnt =0x3000;
+    }
+  wr_bin($addr);
+  wr_bin($cnt);        #CRC is included in the count, addr/length are not
+  print @file;
+  wr_bin ($crc32);
+
+  my $str = sprintf ("Addr = 0x%x, Count = 0x%x, CRC32 = 0x%x", $addr, $cnt, $crc32) if $debug;
+  warn $str if $debug;
+}
+
+#this routine is called when np0 code crosses 12k
+sub write_skbinxtnp1 {
+  my ($objname, $addr) = @_;
+
+  gen_crc_table ();
+
+  open (P, "<$objname") or die ("Could not open $objname for reading");
+  binmode (P);
+  binmode (STDOUT);
+  my @file = ();
+
+  my $cnt=0;
+  my $byte;
+  my $crc32 = 0;
+  my $count = 0;
+  my @b = (0, 0, 0, 0);
+
+  while (read (P, $byte, 1) == 1) {
+    $cnt++;
+    if($cnt > 0x3000){
+
+    $b[$count] = $byte;
+    $count = $count + 1;
+    if ($count == 4) {
+      push @file, $b[3];
+      push @file, $b[2];
+      push @file, $b[1];
+      push @file, $b[0];
+
+      $crc32 = update_crc ($crc32, ord( $b[3]));
+      $crc32 = update_crc ($crc32, ord($b[2]));
+      $crc32 = update_crc ($crc32, ord($b[1]));
+      $crc32 = update_crc ($crc32, ord($b[0]));
+      @b = (0, 0, 0, 0);
+      $count = 0;
+    }
+  }
+
+  }
+if($cnt   > 0x3000)
+  {
+
+  if ($count == 3) {
+    push @file, $b[2];
+    push @file, $b[1];
+    push @file, $b[0];
+    $crc32 = update_crc ($crc32, ord($b[2]));
+    $crc32 = update_crc ($crc32, ord($b[1]));
+    $crc32 = update_crc ($crc32, ord($b[0]));
+    @b = (0, 0, 0, 0);
+    $count = 0;
+  }
+}
+
+if( $cnt > 0x3000)
+  {
+  if ($count == 2) {
+    push @file, $b[1];
+    push @file, $b[0];
+    $crc32 = update_crc ($crc32, ord($b[1]));
+    $crc32 = update_crc ($crc32, ord($b[0]));
+    @b = (0, 0, 0, 0);
+    $count = 0;
+  }
+}
+
+if( $cnt > 0x3000)
+  {
+
+  if ($count == 1) {
+    push @file, $b[0];
+    $crc32 = update_crc ($crc32, ord($b[0]));
+    @b = (0, 0, 0, 0);
+    $count = 0;
+  }
+
+}
+  $cnt += 4; # crc32 adds 4 bytes
+
+  if (($addr & 0x3) != 0) {
+    warn ("WARNING: Address $addr is not word(32-bit) aligned\n");
+  }
+
+  if (($cnt & 0x3) != 0) {
+    warn ("WARNING: Image size $cnt is not word aligned\n");
+  }
+
+  $cnt =$cnt-0x3000;
+  wr_bin($addr);
+  wr_bin($cnt);        #CRC is included in the count, addr/length are not
+  print @file;
+  wr_bin ($crc32);
+
+  my $str = sprintf ("Addr = 0x%x, Count = 0x%x, CRC32 = 0x%x", $addr, $cnt, $crc32) if $debug;
+  warn $str if $debug;
+}
+
+
+sub wr_bin {
+  my ($word) = @_;
+  my @byte = ();
+  $byte[0] = $word & 0xff;
+  $byte[1] = ($word >> 8) & 0xff;
+  $byte[2] = ($word >> 16) & 0xff;
+  $byte[3] = ($word >> 24) & 0xff;
+  printf ("%c%c%c%c", $byte[0], $byte[1], $byte[2], $byte[3]);
+# printf ("%02x%02x%02x%02x\n", $byte[0], $byte[1], $byte[2], $byte[3]);
+# warn ("$byte[0], $byte[2], $byte[2], $byte[3]\n");
+
+}
+
+#This is used to create code that goes into the internal ROM (verilog)
+sub write_vlog32 {
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+
+  my $lptr = 0x0;
+  while (<P>) {
+    (warn ("Skipping line $_\n"), next ) if (/Disassembly of section/);
+    my ($ad, $label, $opcode, $rest) = split (' ');
+    chomp;
+    die ("Invalid format $opcode") unless (length ($opcode) == 8);
+    if ($endian ne "little") {
+      my $str = substr($opcode,6,2) . substr($opcode,4,2) . substr ($opcode,2,2) . substr ($opcode,0,2);
+      $opcode = $str;
+    }
+    printf "       10\'d%d : PreMemRdData  = 32\'h%s; // $_ \n", $lptr, $opcode;
+    $lptr++;
+  }
+}
+
+
+#This is used to create code that goes into the internal ROM (verilog)
+sub write_flash32{
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+  while (<P>) {
+    my ($ad, $label, $opcode, $rest) = split (' ');
+    printf ("%s  %s\n", $ad, $opcode);
+  }
+}
+
+
+
+#This is used to create code that goes into the internal ROM (verilog)
+sub write_flash32_split{
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+  while (<P>) {
+    my ($ad, $label, $opcode, $rest) = split (' ');
+    printf ("0x%s,\n", $ad);
+    printf ("0x%s,\n", $opcode);
+  }
+}
+
+
+
+
+sub write_ork1{
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+  while (<P>) {
+    #Added by Vikram for the lst file generated by the new
+    #code sourcery tool
+    last if (/Address/);
+    my ($ad, $label, $opcode, $rest) = split (' ');
+    printf ("%s\n", $opcode);
+  }
+}
+
+sub write_msgvh{
+  my ($objname) = @_;
+ 
+  open (P, "$objname") or die ("Could not start $objname\n");
+
+  while (<P>) {
+	chomp;
+	 m/\w+:\s+\.\w+\s+0x(\w+)[^\"]+(\"[^\"]+\")/; 
+         printf("32'h%s: msgDisplay(%s);\n", $1, $2);  
+	}
+}
+
+sub write_8051msgvh{
+  my ($objname) = @_;
+ 
+  open (P, "$objname") or die ("Could not start $objname\n");
+
+  while (<P>) {
+	chomp;
+	 m/\w+:\s+\.\w+\s+0x(\w+)[^\"]+(\"[^\"]+\")/; 
+         printf("8'h%s: msgDisplay(%s);\n", $1, $2);  
+	}
+}
+
+
+#This is used to create an ascii file that can be read in verilog simulations by the LPC-ROM model
+sub write_asc8 {
+  my ($objname) = @_;
+  open (P, "<$objname") or die ("Could not open $objname for reading");
+  binmode (P);
+  my @file = ();
+  my $cnt = 0;
+  my $byte;
+  while (read (P, $byte, 1) == 1) {
+    printf ("%08b\n",ord($byte));
+  }
+}
+
+#This is used to create an ascii preload file that can be read in verilog simulations by damem.
+sub write_asc64 {
+  my ($objname) = @_;
+  open (P, "<$objname") or die ("Could not open $objname for reading");
+  binmode (P);
+  my @file = ();
+
+  die ("Fatal Error: write_asc64 is not yet implemented.\n");
+}
+
+sub write_hex64 {
+  my ($objname, $force_start_addr) = @_;
+
+  # In some cases, we want to force the start address to be a specific value that is 
+  # different from what is being pointed to by the ELF (for e.g. when we want to store a program
+  # into a memory. In that case, we 
+  warn ("Force start addr = $force_start_addr\n") if $debug;
+  if ($force_start_addr == -1) {
+    my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+    open (P, "$cmd|") or die ("Could not start $cmd\n");
+    
+    while (<P>)  {
+      last if  (/Disassembly/);
+    }
+    
+    # Get the starting address
+    while (<P>) {
+      my @foo = split;
+      printf ("\@%x\n", hex($foo[0]));
+      last;
+    }
+    close(P);
+  }
+  else {
+      printf ("\@%x\n", $force_start_addr);
+  }
+  my $objcopyout = "$objname.bin";
+  system("$objcopy -O binary $objname $objcopyout");
+
+  open (P, "<:raw", "$objname.bin") or die ("Could not open $objname.bin\n");
+  my $count = 0;
+  my @b = (0, 0, 0, 0, 0, 0, 0, 0);
+  my $byte = 0;
+  while (sysread (P, $byte, 1) == 1) {
+    $b[$count] = ord($byte);
+    $count = $count + 1;
+    if ($count == 8) {
+      printf ("%02x%02x%02x%02x%02x%02x%02x%02x\n", $b[7],$b[6],$b[5],$b[4],$b[3],$b[2],$b[1],$b[0]);
+      @b = (0, 0, 0, 0, 0, 0, 0, 0);
+      $count = 0;
+    }
+  }
+  if ($count > 0) {
+    printf ("%02x%02x%02x%02x%02x%02x%02x%02x\n", $b[7],$b[6],$b[5],$b[4],$b[3],$b[2],$b[1],$b[0]);
+  }
+  unlink ($objcopyout);  #This was a temporary file.
+}
+
+
+
+sub write_hex32xt {
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+
+  # Get the starting address
+  while (<P>) {
+    my @foo = split;
+#    printf ("\@%x\n", hex($foo[0]));
+    printf ("\@%x\n", hex(0) );
+    last;
+  }
+  close(P);
+
+  my $objcopyout = "$objname.bin";
+  system("$objcopy -O binary $objname $objcopyout");
+
+  open (P, "<:raw", "$objname.bin") or die ("Could not open $objname.bin\n");
+  my $count = 0;
+  my @b = (0, 0, 0, 0);
+  my $byte = 0;
+  while (sysread (P, $byte, 1) == 1) {
+    $b[$count] = ord($byte);
+    $count = $count + 1;
+    if ($count == 4) {
+      printf ("%02x%02x%02x%02x\n", $b[0],$b[1],$b[2],$b[3]);
+      @b = (0, 0, 0, 0);
+      $count = 0;
+    }
+  }
+  if ($count > 0) {
+    printf ("%02x%02x%02x%02x\n", $b[0],$b[1],$b[2],$b[3]);
+  }
+}
+
+
+
+
+
+
+
+sub write_orphex64{
+  my ($objname, $force_start_addr) = @_;
+
+  warn ("Force start addr = $force_start_addr\n") if $debug;
+  if ($force_start_addr == -1) {
+    my $cmd = "$objdump -EB --dis--prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+    open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+      last if  (/Disassembly/);
+    }
+
+    # Get the starting address
+    while (<P>) {
+      my @foo = split;
+      printf ("\@%x\n", hex($foo[0]));
+      last;
+    }
+    close(P);
+  }
+  else {
+      printf ("\@%x\n", $force_start_addr);
+  }
+  my $objcopyout = "$objname.bin";
+  system("$objcopy -O binary $objname $objcopyout");
+
+  open (P, "<:raw", "$objname.bin") or die ("Could not open $objname.bin\n");
+  my $count = 0;
+  my  $size=0;
+  my @b = (0, 0, 0, 0, 0, 0, 0, 0);
+  my $byte = 0;
+  while (sysread (P, $byte, 1) == 1) {
+    $b[$count] = ord($byte);
+    $count = $count + 1;
+    if($size < 0x1000)
+      {
+    if ($count == 8) {
+      printf ("%02x%02x%02x%02x%02x%02x%02x%02x\n", $b[7],$b[6],$b[5],$b[4],$b[3],$b[2],$b[1],$b[0]);
+      @b = (0, 0, 0, 0, 0, 0, 0, 0);
+      $count = 0;
+      $size=$size +8;
+    }
+
+   }
+  }
+if($size < 0x1000)
+  {
+  if ($count > 0) {
+    printf ("%02x%02x%02x%02x%02x%02x%02x%02x\n", $b[7],$b[6],$b[5],$b[4],$b[3],$b[2],$b[1],$b[0]);
+  }
+}
+  unlink ($objcopyout);  #This was a temporary file.
+}
+
+
+
+
+
+
+
+
+
+
+
+sub write_hex32 {
+  my ($objname, $force_start_addr) = @_;
+  #my ($objname) = @_;
+  warn ("Force start addr = $force_start_addr\n") if $debug;
+  if ($force_start_addr == -1) {
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+
+  # Get the starting address
+  while (<P>) {
+    my @foo = split;
+    printf ("\@%x\n", hex($foo[0]));
+    last;
+  }
+  close(P);
+  }
+  else {
+      printf ("\@%x\n", $force_start_addr);
+  }
+
+  my $objcopyout = "$objname.bin";
+  system("$objcopy -O binary $objname $objcopyout");
+
+  open (P, "<:raw", "$objname.bin") or die ("Could not open $objname.bin\n");
+  my $count = 0;
+  my @b = (0, 0, 0, 0);
+  my $byte = 0;
+  while (sysread (P, $byte, 1) == 1) {
+    $b[$count] = ord($byte);
+    $count = $count + 1;
+    if ($count == 4) {
+      printf ("%02x%02x%02x%02x\n", $b[3],$b[2],$b[1],$b[0]);
+      @b = (0, 0, 0, 0);
+      $count = 0;
+    }
+  }
+  if ($count > 0) {
+    printf ("%02x%02x%02x%02x\n", $b[3],$b[2],$b[1],$b[0]);
+  }
+}
+
+
+sub write_hex16 {
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+
+  # Get the starting address
+  while (<P>) {
+    my @foo = split;
+#    printf ("\@0%x\n", hex($foo[0]));
+    printf ("0\n");
+    last;
+  }
+  close(P);
+
+  my $objcopyout = "$objname.bin";
+  system("$objcopy -O binary $objname $objcopyout");
+
+  open (P, "<:raw", "$objname.bin") or die ("Could not open $objname.bin\n");
+  my $count = 0;
+  my @b = (0, 0, 0, 0);
+  my $byte = 0;
+  while (sysread (P, $byte, 1) == 1) {
+    $b[$count] = ord($byte);
+    $count = $count + 1;
+    if ($count == 4) {
+      printf ("%02x%02x\n", $b[1],$b[0]);
+      printf ("%02x%02x\n", $b[3],$b[2]);
+      @b = (0, 0, 0, 0);
+      $count = 0;
+    }
+  }
+  if ($count > 0) 
+    {
+      printf ("%02x%02x\n", $b[1],$b[0]);
+      printf ("%02x%02x\n", $b[3],$b[2]);
+    }
+}
+
+
+sub write_hex8 {
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+
+  # Get the starting address
+  while (<P>) {
+    my @foo = split;
+#    printf ("\@0%x\n", hex($foo[0]));
+#    printf ("0\n");
+    last;
+  }
+  close(P);
+
+  my $objcopyout = "$objname.bin";
+  system("$objcopy -O binary $objname $objcopyout");
+
+  open (P, "<:raw", "$objname.bin") or die ("Could not open $objname.bin\n");
+  my $count = 0;
+  my @b = (0, 0, 0, 0);
+  my $byte = 0;
+  while (sysread (P, $byte, 1) == 1) {
+    $b[$count] = ord($byte);
+    $count = $count + 1;
+    if ($count == 4) {
+      printf ("%02x\n", $b[0]);
+      printf ("%02x\n", $b[1]);
+      printf ("%02x\n", $b[2]);
+      printf ("%02x\n", $b[3]);
+      @b = (0, 0, 0, 0);
+      $count = 0;
+    }
+  }
+  if ($count > 0) 
+    {
+      printf ("%02x\n", $b[0]);
+      printf ("%02x\n", $b[1]);
+      printf ("%02x\n", $b[2]);
+      printf ("%02x\n", $b[3]);
+    }
+}
+
+
+
+sub write_orpbehex32 {
+my $cmd  = "$objdump -EB -D  --disassemble --prefix-addresses --disassemble-zeroes --show-raw-insn --disassembler-options=reg-names-std $objName" ;
+
+open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+while (<P>)  {
+  last if  (/Disassembly/);
+}
+
+printf ("\@0%x\n", hex($startAddress));
+my $opcode = 0;
+my $lptr = 0x0;
+my $flag=0x0;
+while (<P>) {
+  (warn ("skipping line $_"), next) if (/Disassembly/);
+  
+  my ($ad, $label, $opcode4, $opcode3, $opcode2, $opcode1, $rest) = split (' ');
+#Do not need to flip for RO DATA
+
+
+    if(/is out of bounds/)
+      {
+	$flag=1;
+      }
+
+     if($flag==0)
+       {
+
+      $opcode = $opcode4.$opcode3.$opcode2.$opcode1;
+    }
+  
+  printf ("$opcode\n");
+}
+
+}
+
+
+
+
+
+
+sub write_orphex32 {
+my $cmd  = "$objdump -EB -D  --disassemble --prefix-addresses --disassemble-zeroes --show-raw-insn --disassembler-options=reg-names-std $objName" ;
+
+open (P, "$cmd|") or die ("Could not start $cmd\n");
+
+while (<P>)  {
+  last if  (/Disassembly/);
+}
+
+printf ("\@0%x\n", hex($startAddress));
+my $opcode = 0;
+my $lptr = 0x0;
+
+while (<P>) {
+  (warn ("skipping line $_"), next) if (/Disassembly/);
+  
+  my ($ad, $label, $opcode4, $opcode3, $opcode2, $opcode1, $rest) = split (' ');
+#Do not need to flip for RO DATA
+  if(/rodata/)
+    {
+      $opcode = $opcode4.$opcode3.$opcode2.$opcode1;
+    }
+  else{
+    $opcode = $opcode1.$opcode2.$opcode3.$opcode4;
+  }
+  
+  printf ("$opcode\n");
+}
+
+}
+
+
+
+
+
+
+
+
+sub write_ssphex32 {
+  my $cmd  = "$objdump -d -D -z --disassemble --prefix-addresses --disassemble-zeroes --show-raw-insn --disassembler-options=reg-names-std $objName" ;
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+  
+while (<P>)  {
+  last if  (/Disassembly/);
+}
+  my $opcode = 0;
+  my $lptr = 0x0;
+  my $flag = 0x0;
+  while (<P>) {
+    
+    (warn ("skipping line $_"), next) if (/Disassembly/);
+    
+    if(/is out of bounds/)
+      {
+	$flag=1;
+      }
+    my ($ad, $label, $opcode4, $opcode3, $opcode2, $opcode1, $rest) = split (' ');
+    
+  #Do not need to flip for RO DATA
+    if(/rodata.str/)
+      {
+	$opcode = $opcode1.$opcode2.$opcode3.$opcode4;
+      }
+    elsif(/rodata/)
+      {
+	$opcode = $opcode4.$opcode3.$opcode2.$opcode1;
+      }
+    else{
+      $opcode = $opcode1.$opcode2.$opcode3.$opcode4;
+    }
+    
+    if($flag==0)
+      {
+	printf ("0x$ad,\n");
+	printf ("0x$opcode,\n");
+      }
+  }
+
+}
+
+
+sub write_sspbehex32 {
+  my $cmd  = "$objdump -d -D -z --disassemble --prefix-addresses --disassemble-zeroes --show-raw-insn --disassembler-options=reg-names-std $objName" ;
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+  
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+  my $opcode = 0;
+  my $lptr = 0x0;
+  my $flag = 0x0;
+  while (<P>) {
+    
+    (warn ("skipping line $_"), next) if (/Disassembly/);
+    
+    if(/is out of bounds/)
+   {
+	$flag=1;
+      }
+    
+    my ($ad, $label, $opcode4, $opcode3, $opcode2, $opcode1, $rest) = split (' ');
+    
+    $opcode = $opcode4.$opcode3.$opcode2.$opcode1;
+    if($flag==0)
+      {
+	printf ("0x$ad,\n");
+	printf ("0x$opcode,\n");
+      }
+  }
+  
+}
+
+
+
+
+
+#Use of this function is deprecated. (Use write_asc8 instead.)
+sub write_bin8 {
+  my ($objname) = @_;
+  my $cmd = "$objdump --prefix-addresses --disassemble-all --disassemble-zeroes --show-raw-insn $objname";
+
+  open (P, "$cmd|") or die ("Could not start $cmd\n");
+  while (<P>)  {
+    last if  (/Disassembly/);
+  }
+
+  my $lptr = 0x0;
+  printf ("\@%x\n", $lptr);
+  while (<P>) {
+    (warn ("Skipping line $_\n"), next ) if (/Disassembly of section/);
+    my ($ad, $label, $opcode, $rest) = split (' ');
+    die ("Invalid format $opcode") unless (length ($opcode) == 8);
+
+    my $addr = oct ("0x$ad");
+    $opcode = "0x" . $opcode;
+    warn ("Addr = $addr, lptr = $lptr, Label=$label, opcode = $opcode\n") if $debug;
+    my @b = ((oct($opcode) & 0x000000ff),
+	     (oct($opcode) & 0x0000ff00) >> 8,
+	     (oct($opcode) & 0x00ff0000) >> 16,
+	     (oct($opcode) & 0xff000000) >> 24,
+	    );
+
+    if ($addr > $lptr + 4) {
+      $lptr = $addr;
+      printf ("\@%x\n", $lptr);
+    }
+
+    for (my $idx=0; $idx<4; $idx++) {
+      if (($addr + $idx) < $lptr) {
+	warn ("skipping ...\n") if $debug;
+      }
+      else {
+	if ($endian eq "little") {
+	  printf ("%08b\n", $b[$idx]);
+	}
+	else {
+	  printf ("%08b\n", $b[3-$idx]);
+	}
+      }
+    }
+    $lptr = $addr + 4;
+  }
+}
+
+sub gen_crc_table {
+  my $print_crc_table = 0;
+  my $POLYNOMIAL = 0x04c11db7;
+  for (my $i=0; $i<256; $i++) {
+    my $crc_accum = $i << 24;
+    for (my $j=0; $j < 8; $j++) {
+      if ($crc_accum & 0x80000000) {
+	$crc_accum = ($crc_accum << 1) ^ $POLYNOMIAL;
+      }
+      else {
+	$crc_accum = ($crc_accum << 1);
+      }
+      $crc_table[$i] = $crc_accum;
+    }
+    printf ("0x%08x%s", $crc_table[$i], ($i % 4 == 3) ? ",\n" : ",  ") if $print_crc_table;
+  }
+}
+
+sub update_crc {
+  my ($crc_accum, $bytein) = @_;
+  my $i = (($crc_accum >> 24) ^ $bytein) & 0xff;
+  $crc_accum = ($crc_accum << 8) ^ $crc_table[$i];
+  return ($crc_accum);
+}
+
+sub write_bootspi{
+  open(INFILE, "< $objName") || die "Can't open $ARGV[0]: $!\n";
+  #open(OUTFILE, "> bootspi.mem") || die "Can't open $ARGV[1]: $!\n";
+  my $count = 0;
+  my $record = 0;
+  while ($record = <INFILE>)
+  {
+    if ($record =~ /@/){ }
+    else {
+      $record =~ m/([a-z0-9][a-z0-9])([a-z0-9][a-z0-9])([a-z0-9][a-z0-9])([a-z0-9][a-z0-9])/ ;
+      printf ("$4 $3 $2 $1 ");
+      $count = $count +4;
+
+      if ($count eq 256){
+        $count = 0;
+        printf ("\n");
+      }
+    }
+  }
+
+close(INFILE);
+#close(OUTFILE);
+
+}
+
+#
+# $Log: se_elfreader,v $
+# Revision 1.10  2006/08/25 23:20:05  saurabhk
+# added option for bootspi.mem file
+#
+# Revision 1.9  2006/08/04 16:53:54  dhanrajj
+# none
+#
+# Revision 1.8  2006/06/29 01:12:09  dhanrajj
+# added skbin_writesize option to append size at front of bin file
+#
+# Revision 1.7  2006/04/22 20:29:38  dhanrajj
+# added new option for orphex 64 bit
+#
+# Revision 1.6  2006/02/27 18:08:27  saurabhk
+# added msgvh for 8051
+#
+# Revision 1.5  2006/02/23 03:03:32  saurabhk
+# modified for ORP
+#
+# Revision 1.4  2006/02/20 23:22:55  dhanrajj
+# fixed hex 32 o/p format
+#
+# Revision 1.3  2006/02/20 18:36:46  dhanrajj
+# fixed start addres to be argument n=based
+#
+# Revision 1.2  2006/02/20 18:31:30  dhanrajj
+# added hex32 option for sdram preload
+#
+# Revision 1.1  2006/02/15 01:14:10  dhanrajj
+# perl scripts for generating images
+#
+# Revision 1.15  2005/10/14 19:06:07  sarangp
+# Added support for HEX64 with forced start address
+#
+# Revision 1.14  2005/10/11 02:15:52  dhanrajj
+# modified start address for NP
+#
+# Revision 1.13  2005/09/16 00:55:54  dhanrajj
+# added new skbin for tensilica to address bigendian issue
+#
+# Revision 1.12  2005/08/23 01:25:22  dhanrajj
+# added arguments
+#
+# Revision 1.11  2005/07/01 22:47:24  ramanar
+# minor optimization
+#
+# Revision 1.10  2005/07/01 22:14:00  ramanar
+# fixed bug in -hex64 output
+#
+# Revision 1.9  2005/05/26 21:18:27  sarangp
+# Added check for non-4byte aligned addr/cnd
+#
+# Revision 1.8  2005/05/08 07:55:34  sarangp
+# Added preliminary support for crc-32
+#
+# Revision 1.7  2005/04/05 22:19:51  ramanar
+# fixed case where listing not a multiple of 8-bytes
+#
+# Revision 1.6  2005/03/25 07:33:35  sarangp
+# LPCROM image is now derived from the output of objcopy (previously from objdump)
+#
+# Revision 1.5  2005/03/23 22:30:39  sarangp
+# Fixed data alignment problem caused by non word aligned strings
+#
+# Revision 1.4  2005/03/18 14:01:52  sarangp
+# Called binmode on both the input and output filehandles.
+#
+# Revision 1.3  2005/03/10 09:00:55  sarangp
+# Added support for modified binary file format (addr/len)
+#
+# Revision 1.2  2005/02/28 18:26:19  sarangp
+# streamlined the code, added printing comments to vlog_32
+#
+# Revision 1.1  2005/02/28 00:47:12  sarangp
+# Initial Checkin (migrated from se_elfloader)
+#
+#
