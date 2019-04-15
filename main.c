@@ -6,44 +6,9 @@
 #include "pilot.h"
 #include "flash.h"
 
-#define FLASH_SECTOR_SIZE	(64*1024)
-
-tU8 p_readbyte (tPVU32 uartBase);
+unsigned char readbyte (tPVU32 uartBase);
+void flash_uboot(void);
 extern flash_info_t flash_info[CONFIG_SYS_MAX_FLASH_BANKS];/* FLASH chips info */
-
-void flash_uboot(void)
-{
-	unsigned int size = 0;
-	tU32 spi_addr = 0x0, flash_size = 0;
-	tU32 erase_sectors = 0;
-
-
-	flash_init();
-//	flash_print_info (&flash_info[0]);
-
-	nc_printf ("Send binary file\r\n");
-	size = receive_file (0x87000000, UART);
-
-	if(size > FLASH_SECTOR_SIZE)
-	{
-		erase_sectors=(size/FLASH_SECTOR_SIZE);
-
-		if ((size % FLASH_SECTOR_SIZE) != 0)
-			erase_sectors++;
-	} else {
-		erase_sectors=1;
-	}
-
-//	nc_printf("sectors to erase ");
-//	print_reg(erase_sectors);
-
-	nc_printf("Erasing");
-	flash_erase(&flash_info[0], 0, erase_sectors);
-
-	nc_printf("Flashing..");
-	write_buff (&flash_info[0], 0x87000000, 0x70000000, size);
-	nc_printf("done\n");
-}
 
 void main(void)
 {
@@ -60,7 +25,7 @@ void main(void)
 		nc_printf("2 Dbg Monitor Mode\n");
 		nc_printf("3 Erase Entire Spi Flash\n\n");
 
-		option = p_readbyte (dbg_uart_base);
+		option = readbyte (dbg_uart_base);
 		switch(option){
 			case '1':
 				nc_printf("option 1. Flash boot spi selected\n\n");
@@ -79,7 +44,7 @@ void main(void)
 	}
 }
 
-tU8 p_readbyte (tPVU32 uartBase)
+unsigned char readbyte (tPVU32 uartBase)
 {
 	volatile unsigned char  val;
 	while(1)
@@ -92,4 +57,54 @@ tU8 p_readbyte (tPVU32 uartBase)
 
 		}
 	}
+}
+
+void flash_uboot(void)
+{
+	unsigned int size = 0;
+	unsigned int spi_addr = 0x0;
+	unsigned int flash_size = 0;
+	unsigned int erase_sectors = 0;
+	volatile unsigned int chk = 0;
+
+	flash_init();
+//	flash_print_info (&flash_info[0]);
+
+	nc_printf ("Send binary file\r\n");
+	size = receive_file (DDR_READ_ADDR, UART);
+
+	if(size > FLASH_SECTOR_SIZE)
+	{
+		erase_sectors=(size/FLASH_SECTOR_SIZE);
+
+		if ((size % FLASH_SECTOR_SIZE) != 0)
+			erase_sectors++;
+	} else {
+		erase_sectors=1;
+	}
+
+//	nc_printf("sectors to erase ");
+//	print_reg(erase_sectors);
+
+	nc_printf("Erasing");
+	flash_erase(&flash_info[0], 0, erase_sectors);
+
+	nc_printf("Flashing..");
+	write_buff (&flash_info[0], DDR_READ_ADDR, AST_FMC_CS0_BASE, size);
+	nc_printf("done\n");
+
+	nc_printf("\nReading");
+
+	for(chk=0; chk< size; chk++){
+
+		if(*((tPVU8)(DDR_READ_ADDR+chk)) != (*((tPVU8)(AST_FMC_CS0_BASE + chk))))
+		{
+			nc_printf("ERROR at "); print_reg(chk);
+			nc_printf("data is"); print_reg(*((tPVU8)(AST_FMC_CS0_BASE + chk)));
+			break;
+		}
+		if (chk%4096 == 0) nc_printf(".");
+	}
+
+	nc_printf("\nSUCCESS\n");
 }

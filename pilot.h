@@ -34,6 +34,8 @@ extern void print_reg(unsigned int reg);
 
 #define HW_ENV		1
 
+#define DDR_READ_ADDR		0x87000000
+#define FLASH_SECTOR_SIZE	(64*1024)
 
 //#if defined (ZYNQ)
 #if 1
