@@ -1,7 +1,7 @@
 //#include "pilot_II.h"
 #define MMCR_PASSWORD       0xFC600309
 
-#define CONFIG_ZYNQ_F1	1
+//#define CONFIG_ZYNQ_F1	1
 
 #ifdef CONFIG_ZYNQ_F1
 #define MMC_BASE_ADR        0x5E6E0000

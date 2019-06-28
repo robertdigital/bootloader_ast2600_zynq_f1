@@ -38,7 +38,7 @@ extern void print_reg(unsigned int reg);
 #define FLASH_SECTOR_SIZE	(64*1024)
 
 //#if defined (ZYNQ)
-#if 1
+#if 0
 #define BASE_OFFSET	0x40000000
 #else 
 #define BASE_OFFSET	0x00000000

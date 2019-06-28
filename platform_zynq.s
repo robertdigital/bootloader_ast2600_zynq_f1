@@ -70,8 +70,8 @@
    print_hex_dword,
    are for DRAM calibration */
 
-#define ASTMMC_UART_BASE     0x5E784000
-.equ ASTMMC_UART_BASE,0x5E784000
+#define ASTMMC_UART_BASE     0x1E784000
+.equ ASTMMC_UART_BASE,0x1E784000
 
 
 //#define ASTMMC_DRAM_ECC
@@ -124,19 +124,19 @@ PATTERN_TABLE:
     .word   0x00000000       // 8
 
     .macro init_delay_timer
-    ldr   r0, =0x5e782024                        // Set Timer3 Reload
+    ldr   r0, =0x1e782024                        // Set Timer3 Reload
     str   r2, [r0]
 
-    ldr   r0, =0x5e782034                        // Clear Timer3 ISR
+    ldr   r0, =0x1e782034                        // Clear Timer3 ISR
     ldr   r1, =0x00000004
     str   r1, [r0]
 
-    ldr   r0, =0x5e782030                        // Enable Timer3
+    ldr   r0, =0x1e782030                        // Enable Timer3
     mov   r2, #7
     mov   r1, r2, lsl #8
     str   r1, [r0]
 
-    ldr   r0, =0x5e782034                        // Check ISR for Timer3 timeout
+    ldr   r0, =0x1e782034                        // Check ISR for Timer3 timeout
     .endm
 
     .macro check_delay_timer
@@ -147,12 +147,12 @@ PATTERN_TABLE:
     .endm
 
     .macro clear_delay_timer
-    ldr   r0, =0x5e78203C                        // Disable Timer3
+    ldr   r0, =0x1e78203C                        // Disable Timer3
     mov   r2, #0xF
     mov   r1, r2, lsl #8
     str   r1, [r0]
 
-    ldr   r0, =0x5e782034                        // Clear Timer3 ISR
+    ldr   r0, =0x1e782034                        // Clear Timer3 ISR
     ldr   r1, =0x00000004
     str   r1, [r0]
     .endm
@@ -208,8 +208,8 @@ PATTERN_TABLE:
 /******************************************************************************
  Calibration Macro End
  ******************************************************************************/
-#define LOCAL_SPACE 0x5E725000
-.equ LOCAL_SPACE,0x5E72E000
+#define LOCAL_SPACE 0x1E725000
+.equ LOCAL_SPACE,0x1E72E000
 .globl lowlevel_init
 lowlevel_init:
         /* Put secondary core to sleep */
@@ -219,14 +219,14 @@ lowlevel_init:
 
 	ldr r2, =LOCAL_SPACE
 	stmia   r2, {r0-r14}
-	ldr sp, =0x5E72E000
+	ldr sp, =0x1E72E000
 	bic sp, sp, #7 /* 8-byte alignment for ABI compliance */
 
     /*TODO- Initialize the Debug UART here*/
     /* Print something good!!*/
     /* Also do any other initializations that is required*/
     @; mov     pc, lr
-    ldr   r0, =(0x5E78400c)
+    ldr   r0, =(0x1E78400c)
     mov   r1, #0x83
     str   r1, [r0]
 
@@ -234,15 +234,15 @@ lowlevel_init:
     mov   r1, #0x01
     str   r1, [r0]
 
-    ldr   r0, =(0x5E784004)
+    ldr   r0, =(0x1E784004)
     mov   r1, #0x00
     str   r1, [r0]
 
-    ldr   r0, =(0x5E78400c)
+    ldr   r0, =(0x1E78400c)
     mov   r1, #0x03
     str   r1, [r0]
 
-    ldr   r0, =(0x5E784008)
+    ldr   r0, =(0x1E784008)
     mov   r1, #0x07
     str   r1, [r0]
 
@@ -275,25 +275,25 @@ init_dram:
     mov   r4, lr
 .if 1
 /* Test - DRAM initial time */
-    ldr   r0, =0x5e78203c
+    ldr   r0, =0x1e78203c
     ldr   r1, =0x0000F000
     str   r1, [r0]
 
-    ldr   r0, =0x5e782044
+    ldr   r0, =0x1e782044
     ldr   r1, =0xFFFFFFFF
     str   r1, [r0]
 
-    ldr   r0, =0x5e782030
+    ldr   r0, =0x1e782030
     ldr   r1, =0x00003000
     str   r1, [r0]
 /* Test - DRAM initial time */
 
     /*Set Scratch register Bit 7 before initialize*/
-    ldr   r0, =0x5e6e2000
+    ldr   r0, =0x1e6e2000
     ldr   r1, =0x1688a8a8
     str   r1, [r0]
 
-/*  ldr   r0, =0x5e6e2040
+/*  ldr   r0, =0x1e6e2040
     ldr   r1, [r0]
     orr   r1, r1, #0x80
     str   r1, [r0]
@@ -301,20 +301,20 @@ init_dram:
 /******************************************************************************
  Disable WDT for SPI Address mode detection function
  ******************************************************************************/
-    ldr   r0, =0x5e620060
+    ldr   r0, =0x1e620060
     mov   r1, #0
     str   r1, [r0]
 
-    ldr   r0, =0x5e620064
+    ldr   r0, =0x1e620064
     mov   r1, #0
     str   r1, [r0]
 
-    ldr   r0, =0x5e78504c
+    ldr   r0, =0x1e78504c
     mov   r1, #0
     str   r1, [r0]
 
     /* Check Scratch Register Bit 6 */
-/*  ldr   r0, =0x5e6e2040
+/*  ldr   r0, =0x1e6e2040
     ldr   r1, [r0]
     bic   r1, r1, #0xFFFFFFBF
     mov   r2, r1, lsr #6
@@ -324,7 +324,7 @@ init_dram:
 ddr_init_start:
 
 /* Debug - UART console message */
-    ldr   r0, =(0x5E78400c)
+    ldr   r0, =(0x1E78400c)
     mov   r1, #0x83
     str   r1, [r0]
 
@@ -332,15 +332,15 @@ ddr_init_start:
     mov   r1, #0x01
     str   r1, [r0]
 
-    ldr   r0, =(0x5E784004)
+    ldr   r0, =(0x1E784004)
     mov   r1, #0x00
     str   r1, [r0]
 
-    ldr   r0, =(0x5E78400c)
+    ldr   r0, =(0x1E78400c)
     mov   r1, #0x03
     str   r1, [r0]
 
-    ldr   r0, =(0x5E784008)
+    ldr   r0, =(0x1E784008)
     mov   r1, #0x07
     str   r1, [r0]
 
@@ -376,7 +376,7 @@ ddr_init_start:
     print_hex_char
     mov   r1, #0
     print_hex_char
-    ldr   r0, =(0x5E784014)
+    ldr   r0, =(0x1E784014)
 wait_print:
     ldr   r1, [r0]
     tst   r1, #0x40
@@ -406,55 +406,55 @@ delay_0:
 /******************************************************************************
  Init DRAM common registers
  ******************************************************************************/
-    ldr   r0, =0x5e6e0000
+    ldr   r0, =0x1e6e0000
     ldr   r1, =0xFC600309
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0034                        // disable SDRAM reset
+    ldr   r0, =0x1e6e0034                        // disable SDRAM reset
     ldr   r1, =0x000000C0
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0008
+    ldr   r0, =0x1e6e0008
     ldr   r1, =0x00000000                        /* VGA */
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0038
+    ldr   r0, =0x1e6e0038
     ldr   r1, =0x00100000
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e003c
+    ldr   r0, =0x1e6e003c
     ldr   r1, =0xFFFFFFFF
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0040
+    ldr   r0, =0x1e6e0040
     ldr   r1, =0x88888888
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0044
+    ldr   r0, =0x1e6e0044
     ldr   r1, =0x88888888
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0048
+    ldr   r0, =0x1e6e0048
     ldr   r1, =0x88888888
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e004c
+    ldr   r0, =0x1e6e004c
     ldr   r1, =0x88888888
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0050
+    ldr   r0, =0x1e6e0050
     ldr   r1, =0x80000000
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0054
+    ldr   r0, =0x1e6e0054
     ldr   r1, =ASTMMC_DRAM_ECC_SIZE
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0050
+    ldr   r0, =0x1e6e0050
     ldr   r1, =0x00000000
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0070
+    ldr   r0, =0x1e6e0070
     ldr   r1, =0x00000000
     str   r1, [r0]
     add   r0, #0x4
@@ -464,23 +464,23 @@ delay_0:
     add   r0, #0x4
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0080
+    ldr   r0, =0x1e6e0080
     ldr   r1, =0xFFFFFFFF
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0084
+    ldr   r0, =0x1e6e0084
     ldr   r1, =0x00000000
     str   r1, [r0]
 
     /* Check DRAM Type by H/W Trapping */
-//  ldr   r0, =0x5e6e2070
+//  ldr   r0, =0x1e6e2070
 //  ldr   r1, [r0]
 //  ldr   r2, =0x01000000                        // bit[24]=1 => DDR4
 //  tst   r1, r2
 .ifdef ASTMMC_DDR_DDR3
 @	b     ddr3_init
 	bl ddrinit_ast2600
-	ldr sp, =0x5E72E000
+	ldr sp, =0x1E72E000
 	bic sp, sp, #7 /* 8-byte alignment for ABI compliance */
 	bl main
 
@@ -508,11 +508,11 @@ ddr3_init:
 
     adrl  r5, TIME_TABLE_DDR3                    // Init DRAM parameter table
 
-    ldr   r0, =0x5e6e0004
+    ldr   r0, =0x1e6e0004
     ldr   r1, =0x00000004                        // 2Gb
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0010
+    ldr   r0, =0x1e6e0010
     mov   r2, #0x0                               // init loop counter
     mov   r3, r5
 ddr3_init_param:
@@ -524,11 +524,11 @@ ddr3_init_param:
     cmp   r2, #0x8
     blt   ddr3_init_param
 
-    ldr   r0, =0x5e6e0034                        // PWRCTL, first time enable CKE, wait at least 200 us
+    ldr   r0, =0x1e6e0034                        // PWRCTL, first time enable CKE, wait at least 200 us
     ldr   r1, =0x000000C0
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0100
+    ldr   r0, =0x1e6e0100
     ldr   r1, =0x00000026
     str   r1, [r0]
 
@@ -541,15 +541,15 @@ ddr3_delay_cke_on:
     clear_delay_timer
     /* end delay 500us */
 
-    ldr   r0, =0x5e6e0034
+    ldr   r0, =0x1e6e0034
     ldr   r1, =0x000000C1
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e000c
+    ldr   r0, =0x1e6e000c
     ldr   r1, =0x00000040
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0030
+    ldr   r0, =0x1e6e0030
     ldr   r1, =0x00000005                        // MR2
     str   r1, [r0]
     ldr   r1, =0x00000007                        // MR3
@@ -559,22 +559,22 @@ ddr3_delay_cke_on:
     ldr   r1, =0x00000011                        // MR0 + DLL_RESET
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e000c                        // REFSET
+    ldr   r0, =0x1e6e000c                        // REFSET
     ldr   r1, =0x00005D41
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0034
+    ldr   r0, =0x1e6e0034
     ldr   r2, =0x70000000
 ddr3_check_dllrdy:
     ldr   r1, [r0]
     tst   r1, r2
     bne   ddr3_check_dllrdy
 
-    ldr   r0, =0x5e6e000c
+    ldr   r0, =0x1e6e000c
     ldr   r1, =0x40005DA1
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0034
+    ldr   r0, =0x1e6e0034
     ldr   r1, =0x000003A3
     str   r1, [r0]
 
@@ -599,7 +599,7 @@ ddr4_init:
 
     adrl  r5, TIME_TABLE_DDR4                    // Init DRAM parameter table
 
-    ldr   r0, =0x5e6e0004
+    ldr   r0, =0x1e6e0004
 #ifdef ASTMMC_DDR4_8GX8
     ldr   r1, =0x00000037                        // Init to 16GB
 #else
@@ -607,7 +607,7 @@ ddr4_init:
 #endif
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0010
+    ldr   r0, =0x1e6e0010
     mov   r2, #0x0                               // init loop counter
     mov   r3, r5
 ddr4_init_param:
@@ -619,11 +619,11 @@ ddr4_init_param:
     cmp   r2, #0x8
     blt   ddr4_init_param
 
-    ldr   r0, =0x5e6e0034                        // PWRCTL, 1st enable CKE, wait at least 200 us
+    ldr   r0, =0x1e6e0034                        // PWRCTL, 1st enable CKE, wait at least 200 us
     ldr   r1, =0x000000C0
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0100
+    ldr   r0, =0x1e6e0100
     ldr   r1, =0x00000026
     str   r1, [r0]
 
@@ -636,15 +636,15 @@ ddr4_delay_cke_on:
     clear_delay_timer
     /* end delay 500us */
 
-    ldr   r0, =0x5e6e0034
+    ldr   r0, =0x1e6e0034
     ldr   r1, =0x000000C1
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e000c
+    ldr   r0, =0x1e6e000c
     ldr   r1, =0x00000040
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0030
+    ldr   r0, =0x1e6e0030
     ldr   r1, =0x00000007                        // MR3
     str   r1, [r0]
     ldr   r1, =0x0000000D                        // MR6
@@ -660,22 +660,22 @@ ddr4_delay_cke_on:
     ldr   r1, =0x00000011                        // MR0 + DLL_RESET
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e000c                        // REFSET
+    ldr   r0, =0x1e6e000c                        // REFSET
     ldr   r1, =0x00005D41
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0034
+    ldr   r0, =0x1e6e0034
     ldr   r2, =0x70000000
 ddr4_check_dllrdy:
     ldr   r1, [r0]
     tst   r1, r2
     bne   ddr4_check_dllrdy
 
-    ldr   r0, =0x5e6e000c
+    ldr   r0, =0x1e6e000c
     ldr   r1, =0x40005DA1
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0034
+    ldr   r0, =0x1e6e0034
     ldr   r1, =0x000003A3
     str   r1, [r0]
 
@@ -697,7 +697,7 @@ Calibration_End:
      8Gb : 0x80000000 ~ 0xBFFFFFFF
      16Gb: 0x80000000 ~ 0xFFFFFFFF
     *******************************/
-    ldr   r0, =0x5e6e0004
+    ldr   r0, =0x1e6e0004
     ldr   r6, [r0]
     bic   r6, r6, #0x00000003                    // record MCR04
     ldr   r7, [r5, #0x20]
@@ -742,9 +742,9 @@ check_dram_size:
     mov   r3, #0x02                              // '2'
 
 check_dram_size_end:
-    ldr   r0, =0x5e6e0004
+    ldr   r0, =0x1e6e0004
     str   r6, [r0]
-    ldr   r0, =0x5e6e0014
+    ldr   r0, =0x1e6e0014
     ldr   r1, [r0]
     bic   r1, r1, #0x000000FF
     and   r7, r7, #0xFF
@@ -752,13 +752,13 @@ check_dram_size_end:
     str   r1, [r0]
 
     /* Version Number */
-    ldr   r0, =0x5e6e0004
+    ldr   r0, =0x1e6e0004
     ldr   r1, [r0]
     mov   r2, #0
     orr   r1, r1, r2, lsl #20
     str   r1, [r0]
 
-    ldr   r0, =0x5e6e0088
+    ldr   r0, =0x1e6e0088
     ldr   r1, =ASTMMC_INIT_DATE
     str   r1, [r0]
 
@@ -790,10 +790,10 @@ check_dram_size_end:
      DDRTest
     ********************************************/
 ddr_test_start:
-    ldr   r0, =0x5e6e0074
+    ldr   r0, =0x1e6e0074
     ldr   r1, =0x0000FFFF                        // test size = 64KB
     str   r1, [r0]
-    ldr   r0, =0x5e6e007c
+    ldr   r0, =0x1e6e007c
     ldr   r1, =0xFF00FF00
     str   r1, [r0]
 
@@ -805,7 +805,7 @@ ddr_test_single_loop:
     mov   r1, r6
     print_hex_char
 /* Debug - UART console message */
-    ldr   r0, =0x5e6e0070
+    ldr   r0, =0x1e6e0070
     ldr   r2, =0x00000000
     str   r2, [r0]
     mov   r2, r6, lsl #3
@@ -820,7 +820,7 @@ ddr_wait_engine_idle_0:
     tst   r2, r3                                 // D[12] = idle bit
     beq   ddr_wait_engine_idle_0
 
-    ldr   r0, =0x5e6e0070                        // read fail bit status
+    ldr   r0, =0x1e6e0070                        // read fail bit status
     ldr   r3, =0x2000
     ldr   r2, [r0]
     tst   r2, r3                                 // D[13] = fail bit
@@ -838,7 +838,7 @@ ddr_test_burst_loop:
     mov   r1, r6
     print_hex_char
 /* Debug - UART console message */
-    ldr   r0, =0x5e6e0070
+    ldr   r0, =0x1e6e0070
     ldr   r2, =0x00000000
     str   r2, [r0]
     mov   r2, r6, lsl #3
@@ -853,7 +853,7 @@ ddr_wait_engine_idle_1:
     tst   r2, r3                                 // D[12] = idle bit
     beq   ddr_wait_engine_idle_1
 
-    ldr   r0, =0x5e6e0070                        // read fail bit status
+    ldr   r0, =0x1e6e0070                        // read fail bit status
     ldr   r3, =0x2000
     ldr   r2, [r0]
     tst   r2, r3                                 // D[13] = fail bit
@@ -863,7 +863,7 @@ ddr_wait_engine_idle_1:
     cmp   r6, #0x08                              // test 8 modes
     bne   ddr_test_burst_loop
 
-    ldr   r0, =0x5e6e0070
+    ldr   r0, =0x1e6e0070
     ldr   r1, =0x00000000
     str   r1, [r0]
     b     set_scratch                            // CBRTest() return(1)
@@ -883,7 +883,7 @@ ddr_test_fail:
     str   r1, [r0]
     mov   r1, #'\n'                              // '\n'
     str   r1, [r0]
-    ldr   r0, =(0x5E784014)
+    ldr   r0, =(0x1E784014)
 wait_print_1:
     ldr   r1, [r0]
     tst   r1, #0x40
@@ -893,18 +893,18 @@ wait_print_1:
 
 set_scratch:
     /*Set Scratch register Bit 6 after ddr initial finished */
-/*  ldr   r0, =0x5e6e2040
+/*  ldr   r0, =0x1e6e2040
     ldr   r1, [r0]
     orr   r1, r1, #0x41
     str   r1, [r0]
 */
 .if 0
-    ldr   r0, =0x5e6e0004
+    ldr   r0, =0x1e6e0004
     ldr   r2, =0x00000280
     ldr   r1, [r0]
     orr   r1, r1, r2
     str   r1, [r0]
-    ldr   r0, =0x5e6e0050
+    ldr   r0, =0x1e6e0050
     ldr   r1, =0x00000000
     str   r1, [r0]
 .endif
@@ -936,13 +936,13 @@ secondary_cpus_init_exp:
 
 wait_for_kickup:
 	wfe
-	ldr r0, =0x5E6E2180
+	ldr r0, =0x1E6E2180
 	ldr r4, =0xABBAADDA
-	ldr r3, =0x5E6E2184
+	ldr r3, =0x1E6E2184
 	ldr r2,[r3]
 	cmp r2,r4
 	bne wait_for_kickup
-	LDR r1,=0x5e784000
+	LDR r1,=0x1e784000
 	MOV r2,#'['
 	STR r2,[r1]
 	MOV r2,#'1'
@@ -963,7 +963,7 @@ wait_for_kickup:
 	ldr r1, =0x83000000
 	str r1, [r0]
 	ldr r2, =0xBADABABA
-	ldr r3, =0x5E6E2184
+	ldr r3, =0x1E6E2184
 	str r2, [r3]
 
 	ldr pc, [r0]

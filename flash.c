@@ -786,8 +786,11 @@ static ulong flash_get_size (ulong base, flash_info_t *info)
 			CtrlOffset = CS2_CTRL;
 			break;
 	}
-
+#if 0
 	*(volatile unsigned int *)0x5E6E2010=0x1688A8A8;
+#else
+	*(volatile unsigned int *)0x1E6E2010=0x1688A8A8;
+#endif
 	*(volatile unsigned int *)(info->reg_base)=0x1002A;
 
 	/* Get Flash ID */
